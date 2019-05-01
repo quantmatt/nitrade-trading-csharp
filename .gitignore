@@ -1,0 +1,15 @@
+*.log
+.vs
+TODO.txt
+TestStrategy/YenSquared.cs
+UnitTests/bin
+UnitTests/obj
+UnitTests/Tester.cs
+cTraderAPI/bin
+cTraderAPI/obj
+TestStrategy/bin
+TestStrategy/obj
+TradingLibrary/bin
+TradingLibrary/obj
+NitradeTradeConsole/bin
+NitradeTradeConsole/obj

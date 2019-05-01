@@ -1,0 +1,54 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.421
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "cTraderAPI", "cTraderAPI\cTraderAPI.csproj", "{6939EF02-518F-4753-A4BD-92A3BEA4B243}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradingLibrary", "TradingLibrary\TradingLibrary.csproj", "{EA5161C4-3F20-472E-BA5D-977BAB868264}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestStrategy", "TestStrategy\TestStrategy.csproj", "{46191166-B496-4ABD-A8AF-E472F220E105}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnitTests", "UnitTests\UnitTests.csproj", "{0A870831-8709-4B68-9CDB-54B6F8977241}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NitradeTradeConsole", "NitradeTradeConsole\NitradeTradeConsole.csproj", "{5368F615-A7BF-4F38-887F-C63C3753A798}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{89024B7C-9E22-4BCD-B2FE-C30A086CABA1}"
+	ProjectSection(SolutionItems) = preProject
+		TODO.txt = TODO.txt
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6939EF02-518F-4753-A4BD-92A3BEA4B243}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6939EF02-518F-4753-A4BD-92A3BEA4B243}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6939EF02-518F-4753-A4BD-92A3BEA4B243}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6939EF02-518F-4753-A4BD-92A3BEA4B243}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EA5161C4-3F20-472E-BA5D-977BAB868264}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EA5161C4-3F20-472E-BA5D-977BAB868264}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EA5161C4-3F20-472E-BA5D-977BAB868264}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EA5161C4-3F20-472E-BA5D-977BAB868264}.Release|Any CPU.Build.0 = Release|Any CPU
+		{46191166-B496-4ABD-A8AF-E472F220E105}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{46191166-B496-4ABD-A8AF-E472F220E105}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{46191166-B496-4ABD-A8AF-E472F220E105}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{46191166-B496-4ABD-A8AF-E472F220E105}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0A870831-8709-4B68-9CDB-54B6F8977241}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0A870831-8709-4B68-9CDB-54B6F8977241}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0A870831-8709-4B68-9CDB-54B6F8977241}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0A870831-8709-4B68-9CDB-54B6F8977241}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5368F615-A7BF-4F38-887F-C63C3753A798}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5368F615-A7BF-4F38-887F-C63C3753A798}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5368F615-A7BF-4F38-887F-C63C3753A798}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5368F615-A7BF-4F38-887F-C63C3753A798}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {1D16D636-50C0-4BC6-9AD0-6E053735C48C}
+	EndGlobalSection
+EndGlobal

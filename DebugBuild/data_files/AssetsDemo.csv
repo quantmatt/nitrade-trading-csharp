@@ -1,0 +1,4 @@
+Name,Digits,Default Pip Cost per Lot,PipAmount,Datafile
+EURJPY,3,12.58,0.01,data_files\price_data\EURJPY_m1.bin
+EURUSD,5,14.03,0.0001,data_files\price_data\EURUSD_m1.bin
+TEST1,5,14.04,0.0001,data_files\test_data\EURUSD_m1.bin

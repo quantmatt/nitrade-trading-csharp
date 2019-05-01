@@ -1,4 +1,4 @@
-# Ni-trade Trading Software
+# Ni-Trade Trading Software
 
 Open source trading strategy back tester and live trading application.
 

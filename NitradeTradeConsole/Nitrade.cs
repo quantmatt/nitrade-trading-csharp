@@ -22,11 +22,11 @@ namespace NitradeTradeConsole
                     switch (args[0])
                     {
                         case "trade":
-                            ActiveTrading.Start();
+                            ActiveTrading.Start("TestStrategy.TestTrader","strategies\\TestTrader.cs");
                             break;
                         case "optimise":
-                            BackTesting.Optimise("YenSquaredDemo",
-                                System.IO.Path.Combine("strategies", "TestStrategy.dll"),
+                            BackTesting.Optimise("TestStrategy.YenSquaredDemo",
+                                "strategies\\YenSquaredDemo.cs",
                                 System.IO.Path.Combine("output", "backtest.log"), 
                                 System.IO.Path.Combine("output", "all_trades.csv"),
                                 System.IO.Path.Combine("output", "report.bin"));

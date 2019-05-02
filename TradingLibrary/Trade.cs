@@ -9,11 +9,12 @@ namespace TradingLibrary
     {
         public enum TradeDirection { LONG, SHORT };
         public enum TradeStatus { OPEN_SENT, OPEN_ACCEPTED, OPEN_FILLED, OPEN_FILLED_STOP_TARGET, CLOSE_SENT, CLOSE_ACCEPTED, CLOSE_FILLED, CLOSE_FILLED_STOP_TARGET}
-        public enum ExitType { Strategy, Stop, TakeProfit };
+        public enum ExitType { Strategy, StopLoss, TakeProfit, Open };
 
         public DateTime OpenTime { get; set; }
         public DateTime ?CloseTime { get; set; }
         public DateTime ?OrderRequestTime { get; set; }
+        public DateTime BarTime { get; set; }
         public double OpenLevel { get; set; }
         public double CloseLevel { get; set; }
         public double StopPoints { get; set; }
@@ -24,12 +25,20 @@ namespace TradingLibrary
         public TradeStatus Status { get; set; }
         public double SpreadPoints { get; set; }
         public double SpreadCost { get; set; }
+        public double OpenSlippagePoints { get; set; }
+        public double CloseSlippagePoints { get; set; }
         public double Commission { get; set; }
         public string Asset { get; set; }
         public string Strategy { get; set; }
         public ExitType Exit { get; set; }
         public double Profit { get; set; }
         public long TradeID { get; set; }
+        public double OpenSlippageTimeFromLocal { get; set; }
+        public double OpenSlippageTimeFromBroker { get; set; }
+        public double OpenSlippageTimeFromBarStart { get; set; }
+        public double CloseSlippageTimeFromLocal { get; set; }
+        public double CloseSlippageTimeFromBroker { get; set; }
+        public double CloseSlippageTimeFromBarStart { get; set; }
 
         public bool Skipped { get; set; }
    
@@ -43,13 +52,8 @@ namespace TradingLibrary
         public bool ExecuteOnNextBar { get; set; }
         public bool CloseOnNextBar { get; set; }
 
-        public long Volume
-        {
-            get {
-                long volume = Convert.ToInt64(Size * 10000000);
-                return volume;
-            }
-        }
+
+
         public double PointChange
         {
             get
@@ -62,11 +66,51 @@ namespace TradingLibrary
         }
         public Trade()
         {
+            Exit = ExitType.Open;
+        }
+
+        public Trade(Trade trade)
+        {
+            
+            OpenTime = trade.OpenTime;
+            CloseTime = trade.CloseTime;
+            OrderRequestTime = trade.OrderRequestTime;
+            OpenLevel = trade.OpenLevel;
+            CloseLevel = trade.CloseLevel;
+            StopPoints = trade.StopPoints;
+            TakeProfitPoints = trade.TakeProfitPoints;
+            StopLevel = trade.StopLevel;
+            TakeProfitLevel = trade.TakeProfitLevel;
+            Direction = trade.Direction;
+            Status = trade.Status;
+            SpreadPoints = trade.SpreadPoints;
+            SpreadCost = trade.SpreadCost;
+            OpenSlippagePoints = trade.OpenSlippagePoints;
+            CloseSlippagePoints = trade.CloseSlippagePoints;
+            Commission = trade.Commission;
+            Asset = trade.Asset;
+            Strategy = trade.Strategy;
+            Exit = trade.Exit;
+            Profit = trade.Profit;
+            TradeID = trade.TradeID;
+            Skipped = trade.Skipped;
+            Comment = trade.Comment;
+            ClientMsgId = trade.ClientMsgId;
+            Size = trade.Size;
+            TradeData = trade.TradeData;
+            OpenSlippageTimeFromBarStart = trade.OpenSlippageTimeFromBarStart;
+            OpenSlippageTimeFromBroker = trade.OpenSlippageTimeFromBroker;
+            OpenSlippageTimeFromLocal = trade.OpenSlippageTimeFromLocal;
+            CloseSlippageTimeFromBarStart = trade.CloseSlippageTimeFromBarStart;
+            CloseSlippageTimeFromBroker = trade.CloseSlippageTimeFromBroker;
+            CloseSlippageTimeFromLocal = trade.CloseSlippageTimeFromLocal;
+            BarTime = trade.BarTime;
 
         }
 
         public Trade(string asset, TradeDirection direction, double size, double stopPoints = 0, double takeProfitPoints = 0, string comment = null)
         {
+            Exit = ExitType.Open;
             Asset = asset;
             Direction = direction;
             ExecuteOnNextBar = true;
@@ -80,6 +124,7 @@ namespace TradingLibrary
 
         public Trade(DateTime openTime, double openLevel)
         {
+            Exit = ExitType.Open;
             OpenLevel = openLevel;
             OpenTime = openTime;
         }
@@ -137,6 +182,11 @@ namespace TradingLibrary
 
             return header;
             
+        }
+
+        public string TradeOpenDescription()
+        {
+            return OpenTime.ToString("yyyy-MM-dd HH:mm:ss") + " - " + TradeID + " " + Asset + " " + Size + " lots at " + OpenLevel;
         }
 
         public override string ToString()

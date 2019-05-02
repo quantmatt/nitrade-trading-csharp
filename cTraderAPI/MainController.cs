@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
+using TradingLibrary;
 
 namespace cTraderAPI
 {
@@ -21,12 +22,9 @@ namespace cTraderAPI
     public delegate void HeartBeatHandler();
     public delegate void AccountAuthorisationComplete(long accountId);
 
-    public delegate void OrderAcceptedHandler(string clientMsgId, long positionId, bool isClosing);
-    public delegate void OrderStopTargetAcceptedHandler(string clientMsgId, long positionId);
-    public delegate void OrderFilledHandler(string clientMsgId, long positionId, long size, bool isClosing);
-    public delegate void OrderCanceledHandler(string clientMsgId, long positionId);
+    
 
-    public class MainController
+    public class MainController : ITradingApi
     {
 
         //If access token expired then get a new one ehre
@@ -62,6 +60,8 @@ namespace cTraderAPI
         private volatile bool isShutdown = false;
         private int MaxMessageSize = 1000000;
 
+        private SymbolCollection _symbols;
+
         public MainController()
         {
             Config = null;
@@ -72,9 +72,22 @@ namespace cTraderAPI
             _heartbeatTimer.AutoReset = true;
             _heartbeatTimer.Elapsed += new System.Timers.ElapsedEventHandler(HeartBeat);
 
+            _symbols = new SymbolCollection();
+
             Users = new Dictionary<string, UserConfig>();
 
             ShouldWriteTicks = false;
+
+        }
+
+        public void MergeSymbolInfo(SymbolCollection symbols)
+        {
+            foreach(Symbol symbol in symbols)
+            {
+                //add to the main symbol collection if it doesn't exist
+                if (_symbols.Where(x => x.Id == symbol.Id).Count() == 0)
+                    _symbols.Add(symbol);
+            }
 
         }
 
@@ -302,27 +315,32 @@ namespace cTraderAPI
 
         }
 
-        public void SendTrade(UserConfig config, string symbolName, string direction, long size, string clientMsgId, string orderComment, long stopPoints = 0, long takeProfitPoints = 0)
+        public void SendOpenTrade(ITradingApiUser config, string symbolName, string direction, double size, string clientMsgId, string orderComment, double stopPoints = 0, double takeProfitPoints = 0)
         {
             ProtoOATradeSide tradeSide = ProtoOATradeSide.BUY;
             if (direction == "SHORT")
                 tradeSide = ProtoOATradeSide.SELL;
 
-            int symbolId = config.Symbols.SymbolId(symbolName);
+            int symbolId = _symbols.SymbolId(symbolName);
+
+            //need to convert our doubles to longs for the cTraderApi
+            long sizeLong = Convert.ToInt64(size * 10000000);
+            long stopPointsLong = Convert.ToInt64(stopPoints * 100000);
+            long takeProfitPointsLong = Convert.ToInt64(takeProfitPoints * 100000);
 
             //create the trade request message and queue it
             var _msg = ProtoOANewOrderReq.CreateBuilder();
-            _msg.SetCtidTraderAccountId(config.AccountId);
+            _msg.SetCtidTraderAccountId(config.AccountId);            
             _msg.SetSymbolId(symbolId);
             _msg.SetOrderType(ProtoOAOrderType.MARKET);
             _msg.SetTradeSide(tradeSide);
-            _msg.SetVolume(size);
+            _msg.SetVolume(sizeLong);
             _msg.SetLabel("LABEL");
             
             if(stopPoints > 0)
-                _msg.SetRelativeStopLoss(stopPoints);
+                _msg.SetRelativeStopLoss(stopPointsLong);
             if(takeProfitPoints > 0)
-                _msg.SetRelativeTakeProfit(takeProfitPoints);
+                _msg.SetRelativeTakeProfit(takeProfitPointsLong);
             _msg.SetComment(orderComment);
 
             var protoMsg = ProtoMessage.CreateBuilder();
@@ -334,10 +352,13 @@ namespace cTraderAPI
             
         }
 
-        public void CloseTrade(UserConfig config, long positionId, long size, string clientMsgId)
+        public void SendCloseTrade(ITradingApiUser config, long positionId, double size, string clientMsgId)
         {
+            //need to convert our doubles to longs for the cTraderApi
+            long sizeLong = Convert.ToInt64(size * 10000000);
+
             var msgFactory = new OpenApiMessagesFactory();
-            ProtoMessage _msg = msgFactory.CreateClosePositionRequest(config.AccountId, config.Token, positionId, size, clientMsgId);
+            ProtoMessage _msg = msgFactory.CreateClosePositionRequest(config.AccountId, config.Token, positionId, sizeLong, clientMsgId);
 
             //create the trade request message and queue it            
             _trasmitQueue.Enqueue(_msg);
@@ -526,10 +547,26 @@ namespace cTraderAPI
                             }
                             else if(executionEvent.ExecutionType == ProtoOAExecutionType.ORDER_FILLED)
                             {
+                                double commission = Convert.ToDouble(executionEvent.Deal.Commission) / 100;
+                                double actualPrice = executionEvent.Deal.ExecutionPrice;
+                                double actualVolume = Convert.ToDouble(executionEvent.Deal.FilledVolume) / 10000000;
+                                double volume = Convert.ToDouble(executionEvent.Deal.Volume) / 10000000;
+                                DateTime execTimestamp = new DateTime(executionEvent.Deal.ExecutionTimestamp * 10000).AddYears(1969);
+                                DateTime createTimestamp = new DateTime(executionEvent.Deal.CreateTimestamp * 10000).AddYears(1969);
+                                double marginRate = executionEvent.Deal.MarginRate;
+
+     
+                                string clientOrderId = executionEvent.Order.ClientOrderId;
+                                long positionId = executionEvent.Order.PositionId;
+
+                                if (actualVolume != volume)
+                                    ErrorHandler?.Invoke("TODO: partial fills not properly supported tradeid " + positionId);
+
+
                                 if (executionEvent.Order.ClosingOrder)
-                                    OnOrderFilled?.Invoke(executionEvent.Order.ClientOrderId, executionEvent.Order.PositionId, executionEvent.Order.ExecutedVolume, true);
+                                    OnOrderFilled?.Invoke(clientOrderId, positionId, actualVolume, commission, actualPrice, execTimestamp, createTimestamp, marginRate, true);
                                 else
-                                    OnOrderFilled?.Invoke(executionEvent.Order.ClientOrderId, executionEvent.Order.PositionId, executionEvent.Order.ExecutedVolume, false);
+                                    OnOrderFilled?.Invoke(clientOrderId, positionId, actualVolume, commission, actualPrice, execTimestamp, createTimestamp, marginRate, false);
                             }
                             else if (executionEvent.ExecutionType == ProtoOAExecutionType.ORDER_CANCELLED)
                             {
@@ -558,6 +595,9 @@ namespace cTraderAPI
                             //store the symbols in a dictionary where the key is the id
                             foreach (ProtoOALightSymbol symbol in symbols.SymbolList)
                                 config.Symbols.Add(new Symbol((int)symbol.SymbolId, symbol.SymbolName));
+
+                            //Merge any new symbol information with the master symbol list
+                            MergeSymbolInfo(config.Symbols);
 
                             //Save to file so they can be easily reloaded on program restart
                             try

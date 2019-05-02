@@ -7,8 +7,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "cTraderAPI", "cTraderAPI\cT
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradingLibrary", "TradingLibrary\TradingLibrary.csproj", "{EA5161C4-3F20-472E-BA5D-977BAB868264}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestStrategy", "TestStrategy\TestStrategy.csproj", "{46191166-B496-4ABD-A8AF-E472F220E105}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UnitTests", "UnitTests\UnitTests.csproj", "{0A870831-8709-4B68-9CDB-54B6F8977241}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NitradeTradeConsole", "NitradeTradeConsole\NitradeTradeConsole.csproj", "{5368F615-A7BF-4F38-887F-C63C3753A798}"
@@ -16,6 +14,13 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{89024B7C-9E22-4BCD-B2FE-C30A086CABA1}"
 	ProjectSection(SolutionItems) = preProject
 		TODO.txt = TODO.txt
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "strategies", "strategies", "{A7214BF3-71EE-4142-8044-F3D5BCC49501}"
+	ProjectSection(SolutionItems) = preProject
+		DebugBuild\strategies\TestTrader.cs = DebugBuild\strategies\TestTrader.cs
+		DebugBuild\strategies\YenSquared.cs = DebugBuild\strategies\YenSquared.cs
+		DebugBuild\strategies\YenSquaredDemo.cs = DebugBuild\strategies\YenSquaredDemo.cs
 	EndProjectSection
 EndProject
 Global
@@ -32,10 +37,6 @@ Global
 		{EA5161C4-3F20-472E-BA5D-977BAB868264}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EA5161C4-3F20-472E-BA5D-977BAB868264}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EA5161C4-3F20-472E-BA5D-977BAB868264}.Release|Any CPU.Build.0 = Release|Any CPU
-		{46191166-B496-4ABD-A8AF-E472F220E105}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{46191166-B496-4ABD-A8AF-E472F220E105}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{46191166-B496-4ABD-A8AF-E472F220E105}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{46191166-B496-4ABD-A8AF-E472F220E105}.Release|Any CPU.Build.0 = Release|Any CPU
 		{0A870831-8709-4B68-9CDB-54B6F8977241}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{0A870831-8709-4B68-9CDB-54B6F8977241}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0A870831-8709-4B68-9CDB-54B6F8977241}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -47,6 +48,9 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{A7214BF3-71EE-4142-8044-F3D5BCC49501} = {89024B7C-9E22-4BCD-B2FE-C30A086CABA1}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {1D16D636-50C0-4BC6-9AD0-6E053735C48C}

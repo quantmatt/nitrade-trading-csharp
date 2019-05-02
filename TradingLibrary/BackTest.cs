@@ -34,7 +34,7 @@ namespace TradingLibrary
             MessageDelegate = messageDelegate;
         }
 
-        public void Run(string strategyName, string strategiesDLL, bool optimise = false)
+        public void Run(string strategyReference, string strategyPath, bool optimise = false)
         {
             start = DateTime.Now;
 
@@ -43,7 +43,7 @@ namespace TradingLibrary
             Optimise = optimise;
 
             //Get the strategy
-            Strategy strategy = Strategy.Load(strategyName, strategiesDLL);
+            Strategy strategy = Strategy.Load(strategyReference, strategyPath);
 
             //Copy across the strategy back test setup
             if (strategy.StartDate != null)
@@ -92,7 +92,7 @@ namespace TradingLibrary
             {
                 foreach(StrategyVariant currentVariant in variants)
                 {
-                    Strategy localStrategy = Strategy.Load(strategyName, strategiesDLL);
+                    Strategy localStrategy = Strategy.Load(strategyReference, strategyPath);
                     Asset asset = assetDetails[assetName];
                     localStrategy.Assets.Add(assetName, asset);
 

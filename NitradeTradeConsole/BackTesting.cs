@@ -42,7 +42,7 @@ namespace NitradeTradeConsole
 
         }
 
-        public static void Optimise(string strategyName, string dllPath, string logPath = null, string tradesPath = null, string reportPath=null)
+        public static void Optimise(string strategyReference, string strategyPath, string logPath = null, string tradesPath = null, string reportPath=null)
         {
             _logPath = logPath;
             _tradesPath = tradesPath;
@@ -51,7 +51,7 @@ namespace NitradeTradeConsole
             try
             {
                 BackTest bt = new BackTest(OnCompleteBackTest, new MessageDelegate(DisplayMessage));
-                bt.Run(strategyName, dllPath, true);
+                bt.Run(strategyReference, strategyPath, true);
             }
             catch (Exception ex)
             {

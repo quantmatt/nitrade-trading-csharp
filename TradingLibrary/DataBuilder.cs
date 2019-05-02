@@ -61,20 +61,25 @@ namespace TradingLibrary
 
        
 
-        public static byte[] LoadBinary(string filename)
+        public static byte[] LoadBinary(string path)
         {
-            byte[] bytes = File.ReadAllBytes(filename);
+            //set pathnames to have the correct slash depending on operation system
+            path = Path.Combine(path.Split(new char[] { '\\' }));
+
+            byte[] bytes = File.ReadAllBytes(path);
             return bytes;
         }
 
-        public static void CsvToBinary(string csvFilename, string binaryFilename, bool hasHeader, MessageDelegate messageDelegate = null)
+        public static void CsvToBinary(string csvPath, string binaryFilename, bool hasHeader, MessageDelegate messageDelegate = null)
         {
+            csvPath = Path.Combine(csvPath.Split(new char[] { '\\' }));
+
             //Record start time of process for time taken message
             DateTime now = DateTime.Now;
 
             //Loads from CSV
-            messageDelegate?.Invoke(csvFilename + " reading...", MessageType.Message);
-            string[] lines = File.ReadAllLines(csvFilename);
+            messageDelegate?.Invoke(csvPath + " reading...", MessageType.Message);
+            string[] lines = File.ReadAllLines(csvPath);
 
             //skip the header if it has one in the csv
             int startIndex = 0;
@@ -92,7 +97,7 @@ namespace TradingLibrary
             //Save it to binary
             DatasetToBinary(binaryFilename, dataset);
 
-            messageDelegate?.Invoke(csvFilename + " csv to binary " + binaryFilename +  " took: " + (DateTime.Now - now).TotalSeconds + " secs");
+            messageDelegate?.Invoke(csvPath + " csv to binary " + binaryFilename +  " took: " + (DateTime.Now - now).TotalSeconds + " secs");
         }
 
         public static void DumpBarsToCsv(Bar[] bars, string filename)
@@ -322,9 +327,12 @@ namespace TradingLibrary
             PreCalculatedFeatures pcFeatures = new PreCalculatedFeatures();
 
             //[ASSET] is used as a placeholder so insert the assetname here
-            string filename = externalFeature.BinaryFilepath.Replace("[ASSET]", asset.Name);
+            string path = externalFeature.BinaryFilepath.Replace("[ASSET]", asset.Name);
 
-            byte[] bytes = File.ReadAllBytes(filename);
+            //make the path suitable for all operating systems
+            path = Path.Combine(path.Split(new char[] { '\\' }));
+
+            byte[] bytes = File.ReadAllBytes(path);
 
             //Traverse the byte array to add in the values to the Data attribute of the corresponding bar
             int i = 0;

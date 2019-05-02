@@ -26,6 +26,14 @@ namespace TradingLibrary
             Data = new Dictionary<int, PreCalculatedFeatures>();
         }
 
+        public double Point
+        {
+            get
+            {
+                return Math.Pow(10, -Digits);
+            }
+        }
+
         public static Dictionary<string, Asset> LoadAssetFile(string filename)
         {           
 

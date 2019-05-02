@@ -12,7 +12,7 @@ namespace UnitTests
     public class TradeCycleTest
     {
         static MainController controller;
-        UserConfig config;
+        UserConfig cTraderConfig;
         bool loggedIn = false;
         bool complete = false;
         bool failed = true;
@@ -27,8 +27,9 @@ namespace UnitTests
             controller.Config = new Config(@"C:\ForexData\TestData\config\");
 
             //Load the user file
-            config = new UserConfig(@"C:\ForexData\TestData\config\12345_config.txt");
-            controller.Users.Add(config.Token, config);
+            cTraderConfig = new UserConfig(@"C:\ForexData\TestData\config\12345_config.txt");
+            controller.Users.Add(cTraderConfig.Token, cTraderConfig);
+
 
             //open the connection
             controller.OpenConnection();
@@ -80,11 +81,12 @@ namespace UnitTests
                 trade.Status = Trade.TradeStatus.OPEN_FILLED_STOP_TARGET;
                 Console.WriteLine("Stop Target Accepted.");
                 Console.WriteLine("Closing...");
-                controller.CloseTrade(config, trade.TradeID, trade.Volume, trade.ClientMsgId);
+                controller.SendCloseTrade((ITradingApiUser)cTraderConfig, trade.TradeID, trade.Size, trade.ClientMsgId);
             }
         }
 
-        private void orderFilled(string clientMsgId, long positionId, long size, bool isClosing)
+        private void orderFilled(string clientMsgId, long positionId, double size, double commission, double actualPrice,
+        DateTime execTimestamp, DateTime createTimestamp, double marginRate, bool isClosing)
         {
             if (trade.ClientMsgId == clientMsgId && trade.TradeID == positionId)
             {
@@ -96,7 +98,7 @@ namespace UnitTests
                 else
                 {
 
-                    if (size < trade.Volume)
+                    if (size < trade.Size)
                     {
                         trade.Size -= Convert.ToInt64(size * 10000000);
                         trade.Status = Trade.TradeStatus.OPEN_FILLED_STOP_TARGET;
@@ -153,7 +155,7 @@ namespace UnitTests
             trade.OrderRequestTime = DateTime.Now;
             trade.Status = Trade.TradeStatus.OPEN_SENT;
             Console.WriteLine("Opening...");
-            controller.SendTrade(config, "EURUSD", "SHORT", trade.Volume, trade.ClientMsgId, "TestStrategy", 100, 200);
+            controller.SendOpenTrade((ITradingApiUser)cTraderConfig, "EURUSD", "SHORT", trade.Size, trade.ClientMsgId, "TestStrategy", 100, 200);
 
             //wait until the test is complete
             do

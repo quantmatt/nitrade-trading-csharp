@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.CSharp;
+using System.CodeDom.Compiler;
 using System.Reflection;
 
 namespace TradingLibrary
@@ -10,8 +12,14 @@ namespace TradingLibrary
 
     public class Strategy
     {
+
+        //allows interaction with the trading ai to send orders ect.
+        public ITradingApi TradingApi { get; set; }
+        public ITradingApiUser TradingApiUser {get;set;} //the user this strategy belongs to
+
         private List<Trade> openTrades;
         private List<Trade> closedTrades;
+        private List<Trade> pendingTrades;
 
         public string AssetDetailsFile { get; set; }
         public Dictionary<string, Asset> Assets { get; set; }
@@ -59,15 +67,20 @@ namespace TradingLibrary
         public ReduceCorrelatedParams ReduceCorrelatedParams = null;
         public ReduceByRankParams ReduceByRankParams = null;
 
+        public MessageDelegate OnMessage = null;
+
         public string Description;
 
         public bool IsTesting;
 
         public Strategy()
         {
+            //Only used for live trading
+            TradingApi = null;
 
             openTrades = new List<Trade>();
             closedTrades = new List<Trade>();
+            pendingTrades = new List<Trade>();
             Datasets = new Dictionary<int, Bar[]>();
             BarIndices = new Dictionary<int, int>();
 
@@ -168,13 +181,29 @@ namespace TradingLibrary
             return Series[Timeframe][seriesName];
         }
 
-
-        public static Strategy Load(string strategyName, string dllPath)
+        public static Strategy Load(string strategyReference, string strategyPath, string[] additionalDllPaths = null)
         {
-            dllPath = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), dllPath);
-            string name = System.IO.Path.GetFileNameWithoutExtension(dllPath);
-            var DLL = Assembly.LoadFile(dllPath);
-            Type type = DLL.GetType(name + "." + strategyName);
+            //Compile the .cs file at runtime - this uses a temp dll file that is cleaned up on exit
+            CSharpCodeProvider provider = new CSharpCodeProvider();
+            CompilerParameters parameters = new CompilerParameters();
+            parameters.GenerateInMemory = true;
+
+            //load in any assemblies required for this strategy
+            parameters.ReferencedAssemblies.Add("TradingLibrary.dll");
+            if(additionalDllPaths != null)
+            {
+                foreach(string path in additionalDllPaths)
+                    parameters.ReferencedAssemblies.Add(path);
+            }
+
+            //make the path suitable for all operating systems
+            strategyPath = System.IO.Path.Combine(strategyPath.Split(new char[] { '\\' }));
+
+            //compile and build the strategy object
+            string[] code = new string[] { System.IO.File.ReadAllText(strategyPath) };
+            CompilerResults results = provider.CompileAssemblyFromSource(parameters, code);
+            var DLL = results.CompiledAssembly;
+            Type type = DLL.GetType(strategyReference);
             Strategy strategy = (Strategy)Activator.CreateInstance(type);
 
             //Call the init function if it has one
@@ -269,14 +298,61 @@ namespace TradingLibrary
         public Trade ExecuteTrade(Trade.TradeDirection direction, double size, double stopPoints = 0, double takeProfitPoints = 0, string comment = null)
         {
             Trade newTrade = new Trade(Asset.Name, direction, size, stopPoints, takeProfitPoints, comment);
-            openTrades.Add(newTrade);
+
+            //if no trading api connected ie. backtesting - just create the trade and add it
+            if (TradingApi == null)
+            {
+                
+                openTrades.Add(newTrade);
+            }
+            else //otherwise the trade needs to be sent to the trade server as a real trade
+            {
+                //create a description for tracking the order progress, use strategy description + a unix timestamp
+                newTrade.ClientMsgId = Description + (Int32)(DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1))).TotalSeconds;
+                newTrade.OrderRequestTime = DateTime.Now;
+                newTrade.Status = Trade.TradeStatus.OPEN_SENT;
+                newTrade.SpreadPoints = Ask - Bid;
+                newTrade.BarTime = CurrentBar.OpenTime;
+
+                //store the current price to work out slippage later
+                if (direction == Trade.TradeDirection.LONG)
+                    newTrade.OpenLevel = Ask;
+                else
+                    newTrade.OpenLevel = Bid;
+
+                //add to the pending trades array so we can check on the updates
+                pendingTrades.Add(newTrade);
+
+                TradingApi.SendOpenTrade(TradingApiUser, newTrade.Asset, newTrade.Direction.ToString(), newTrade.Size, newTrade.ClientMsgId, "TestStrategy", stopPoints, takeProfitPoints);
+            }
+
             return newTrade;
         }
 
         public void CloseAllTrades(Bar currentTick, string assetName = null)
         {
-            foreach (Trade openTrade in OpenTrades)
-                openTrade.CloseOnNextBar = true;
+            //if no trading api connected ie. backtesting - just close on the next bar (or tick)
+            if (TradingApi == null)
+            {
+                foreach (Trade openTrade in OpenTrades)
+                {
+                    openTrade.Exit = Trade.ExitType.Strategy;
+                    openTrade.CloseOnNextBar = true;
+                }
+            }
+            else
+            { //otherwise the trade command needs to be sent to the trade server
+                foreach (Trade openTrade in OpenTrades)
+                {
+                    openTrade.Status = Trade.TradeStatus.CLOSE_SENT;
+                    openTrade.Exit = Trade.ExitType.Strategy;
+
+                    //add to the pending trades array so we can check on the updates
+                    pendingTrades.Add(openTrade);
+
+                    TradingApi.SendCloseTrade(TradingApiUser, openTrade.TradeID, openTrade.Size, openTrade.ClientMsgId);
+                }
+            }
         }
 
         public void BTCloseAllTrades(Bar currentTick, string assetName = null)
@@ -309,15 +385,240 @@ namespace TradingLibrary
 
         private void CloseTrade(Trade trade, double closeLevel, DateTime closeTime, Trade.ExitType exit)
         {
-            double slippage = 0;
+            if (TradingApi == null)
+            {
+                double slippage = 0;
 
-            trade.Exit = exit;
-            trade.CloseOnNextBar = false;
-            trade.CloseLevel = closeLevel + slippage;
-            trade.Profit = trade.PointChange / Assets[trade.Asset].Pip * Assets[trade.Asset].PipValue * trade.Size;
-            trade.CloseTime = closeTime;
-            closedTrades.Add(trade);
+                trade.Exit = exit;
+                trade.CloseOnNextBar = false;
+                trade.CloseLevel = closeLevel + slippage;
+                trade.Profit = trade.PointChange / Assets[trade.Asset].Pip * Assets[trade.Asset].PipValue * trade.Size;
+                trade.CloseTime = closeTime;
+                closedTrades.Add(trade);
+            }
+            else
+            {
+                trade.Exit = exit;
+                trade.Status = Trade.TradeStatus.CLOSE_SENT;
+                trade.OrderRequestTime = DateTime.Now;
+                trade.BarTime = CurrentBar.OpenTime;
 
+                //store the current price to work out slippage later
+                if (trade.Direction == Trade.TradeDirection.LONG)
+                    trade.CloseLevel = Ask;
+                else
+                    trade.CloseLevel = Bid;
+
+                //add to the pending trades array so we can check on the updates
+                pendingTrades.Add(trade);
+
+                TradingApi.SendCloseTrade(TradingApiUser, trade.TradeID, trade.Size, trade.ClientMsgId);
+            }
+
+        }
+
+
+        public void OrderAccepted(string clientMsgId, long positionId, bool isClosing)
+        {
+            foreach (Trade trade in pendingTrades)
+            {
+                if (trade.ClientMsgId == clientMsgId)
+                {
+                    if (!isClosing)
+                    {
+                        trade.Status = Trade.TradeStatus.OPEN_ACCEPTED;
+                        trade.TradeID = positionId;
+                        
+                    }
+                    else if (trade.TradeID == positionId)
+                    {
+                        trade.Status = Trade.TradeStatus.CLOSE_ACCEPTED;
+                    }
+                }
+            }
+        }
+
+        public void OrderStopTargetAccepted(string clientMsgId, long positionId)
+        {
+            Trade foundTrade = null;
+            foreach (Trade trade in pendingTrades)
+            {
+                if (trade.ClientMsgId == clientMsgId && trade.TradeID == positionId)
+                {
+                    trade.Status = Trade.TradeStatus.OPEN_FILLED_STOP_TARGET;
+                    foundTrade = trade;
+                }
+            }
+
+            //this trade is no longer pending
+            if (foundTrade != null)
+                pendingTrades.Remove(foundTrade);
+        }
+
+        public void OrderFilled(string clientMsgId, long positionId, double size, double commission, double actualPrice,
+            DateTime execTimestamp, DateTime createTimestamp, double marginRate, bool isClosing)
+        {
+            Trade trade = null;
+            bool removeFromPending = false;
+
+            //look in the pending trades
+            foreach (Trade thisTrade in pendingTrades)
+            {
+                if (thisTrade.ClientMsgId == clientMsgId && thisTrade.TradeID == positionId)
+                {
+                    trade = thisTrade;
+                }
+            }
+
+            //if not found look in the open trades because this might  be a stoploss or profit target being hit
+            foreach (Trade thisTrade in openTrades)
+            {
+                if (thisTrade.ClientMsgId == clientMsgId && thisTrade.TradeID == positionId)
+                {
+                    trade = thisTrade;
+                }
+            }
+
+            //this trade is no longer pending
+            if (trade != null)
+            {
+                if (!isClosing)
+                {
+                    
+                    trade.Status = Trade.TradeStatus.OPEN_FILLED;
+
+                    //fill in the trade details from the order
+                    trade.OpenSlippagePoints = trade.OpenLevel - actualPrice;
+                    trade.OpenLevel = actualPrice;
+                    trade.OpenTime = execTimestamp;
+                    trade.Size = size; //might not have been completly filled
+                    trade.OpenSlippageTimeFromBroker = (execTimestamp - createTimestamp).TotalSeconds;
+                    trade.OpenSlippageTimeFromLocal = (execTimestamp - (DateTime)trade.OrderRequestTime).TotalSeconds;
+                    trade.OpenSlippageTimeFromBarStart = (execTimestamp - trade.BarTime).TotalSeconds;
+                    trade.Commission = commission;
+
+                    if (trade.Direction == Trade.TradeDirection.SHORT)
+                        trade.SpreadPoints = -trade.SpreadPoints;
+
+                    OnMessage?.Invoke("Trade opened: " + trade.TradeOpenDescription());
+                    openTrades.Add(trade);
+
+                    try
+                    {
+                        System.IO.File.AppendAllText(System.IO.Path.Combine("output", "open_trades.csv"), trade.ToString() + "\n");
+                    }
+                    catch (Exception e)
+                    {
+                        OnMessage?.Invoke("Failed to write open trade: " + e.Message, MessageType.Error);
+                    }
+
+                    if (trade.StopPoints == 0 && trade.TakeProfitPoints == 0)
+                        removeFromPending = true;
+
+                }
+                else
+                {
+                    //PARTIAL TRADE CLOSE - NOT PROPERLY IMPLEMENTED
+                    if (size < trade.Size)
+                    {
+                        trade.Size -= Convert.ToInt64(size * 10000000);
+                        trade.Status = Trade.TradeStatus.OPEN_FILLED_STOP_TARGET;
+                        
+
+
+                        //fill in the trade details from the order
+
+                        Trade partialTrade = new Trade(trade);
+                        partialTrade.Size = Convert.ToInt64(size * 10000000);
+                        trade.CloseTime = execTimestamp;
+                        trade.CloseLevel = actualPrice;
+                        trade.Commission += commission;
+                        OnMessage?.Invoke("Trade partially closed: " + partialTrade.ToString());
+
+                        try
+                        {
+                            System.IO.File.AppendAllText(System.IO.Path.Combine("output", "closed_trades.csv"), partialTrade.ToString() + "\n");
+                        }
+                        catch (Exception e)
+                        {
+                            OnMessage?.Invoke("Failed to write partial closed trade: " + e.Message, MessageType.Error);
+                        }
+                    }
+                    else
+                    {
+                        
+
+
+                        trade.Status = Trade.TradeStatus.CLOSE_FILLED;
+                        //fill in the trade details from the order
+                        trade.Size = Convert.ToInt64(size * 10000000);
+                        trade.Status = Trade.TradeStatus.OPEN_FILLED_STOP_TARGET;
+                        trade.CloseTime = execTimestamp;
+                        trade.CloseSlippagePoints = trade.CloseLevel - actualPrice;
+                        trade.CloseLevel = actualPrice;
+                        trade.Commission += commission; //commission on both sides of the order
+                        trade.CloseSlippageTimeFromBroker = (execTimestamp - createTimestamp).TotalSeconds;
+                        trade.CloseSlippageTimeFromLocal = (execTimestamp - (DateTime)trade.OrderRequestTime).TotalSeconds;
+                        trade.CloseSlippageTimeFromBarStart = (execTimestamp - trade.BarTime).TotalSeconds;
+
+                        //check for stop loss or profit hit
+                        if (trade.Exit == Trade.ExitType.Open)
+                        {
+                            if (trade.PointChange > 0)
+                                trade.Exit = Trade.ExitType.TakeProfit;
+                            else
+                                trade.Exit = Trade.ExitType.StopLoss;
+                        }
+
+                        OnMessage?.Invoke("Trade closed: " + trade.ToString());
+                        closedTrades.Add(trade);
+                        openTrades.Remove(trade);
+
+                        try
+                        {
+                            System.IO.File.AppendAllText(System.IO.Path.Combine("output", "closed_trades.csv"), trade.ToString() + "\n");
+                        }
+                        catch (Exception e)
+                        {
+                            OnMessage?.Invoke("Failed to write closed trade: " + e.Message, MessageType.Error);
+                        }
+
+                        if (trade.StopPoints == 0 && trade.TakeProfitPoints == 0)
+                            removeFromPending = true;
+                    }
+                }
+
+                if(removeFromPending)
+                    pendingTrades.Remove(trade);
+            }
+        }
+
+        public void OrderCancelled(string clientMsgId, long positionId)
+        {
+            Trade foundTrade = null;
+            foreach (Trade trade in pendingTrades)
+            {
+                if (trade.ClientMsgId == clientMsgId && trade.TradeID == positionId)
+                {
+                    trade.Status = Trade.TradeStatus.CLOSE_FILLED_STOP_TARGET;
+                    foundTrade = trade;
+                }
+            }
+
+            //this trade is no longer pending
+            if(foundTrade != null)
+                pendingTrades.Remove(foundTrade);
+        }
+
+        public bool HasPendingOrder(string clientMsgId)
+        {
+            foreach(Trade trade in pendingTrades)
+            {
+                if (trade.ClientMsgId == clientMsgId)
+                    return true;
+            }
+
+            return false;
         }
 
         public void UpdateTrades(Bar currentTick)
@@ -399,7 +700,7 @@ namespace TradingLibrary
                     if (trade.StopHit(currentTick.BidLow, currentTick.AskHigh))
                     {
                         //add some random estimation of the seconds into the bar that the trade was closed
-                        CloseTrade(trade, trade.StopLevel, currentTick.OpenTime.AddSeconds(30), Trade.ExitType.Stop);
+                        CloseTrade(trade, trade.StopLevel, currentTick.OpenTime.AddSeconds(30), Trade.ExitType.StopLoss);
                     }
                     else if (trade.TakeProfitHit(currentTick.AskLow, currentTick.BidHigh))
                     {

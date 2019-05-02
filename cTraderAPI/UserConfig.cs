@@ -1,9 +1,10 @@
 ﻿using System;
 using System.IO;
+using TradingLibrary;
 
 namespace cTraderAPI
 {
-    public class UserConfig
+    public class UserConfig : ITradingApiUser
     {
         public string Token { get; set; }
         public string RefreshToken { get; set; }

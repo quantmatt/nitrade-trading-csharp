@@ -32,9 +32,15 @@ namespace NitradeTradeConsole
         static string[] consoleColumns = new string[3] { "", "", "" };
         static int columnWidth = 30;
 
-        public static void Start()
+        static string _strategyName;
+        static string _dllPath;
+
+        public static void Start(string strategyName, string dllPath)
         {
             ProgramRunning = true;
+            _strategyName = strategyName;
+            _dllPath = dllPath;
+
 
             controller = new MainController();
             controller.MessageHandler = new MessageHandler(DisplayMessage);
@@ -73,35 +79,46 @@ namespace NitradeTradeConsole
 
             //Load all the user config files (need at least 1 user)
             string[] userFiles = System.IO.Directory.GetFiles(@"local/users/");
+            UserConfig firstUser = null;
             foreach (string filename in userFiles)
             {
                 UserConfig config = new UserConfig(filename);
-
+                firstUser = config;
+                //update the controller with any symbolIds that are stored in the user config
+                controller.MergeSymbolInfo(config.Symbols);
 
                 //store as a dictionary with access token as the key for easier referencing
                 if (config != null)
                     controller.Users.Add(config.Token, config);
             }
 
-
-
+            //Add in the trade event handlers
+            controller.OnTradeFail = new TradeFailedHandler(TradeFailed);
+            controller.OnOrderAccepted = new OrderAcceptedHandler(OrderAccepted);
+            controller.OnStopTargetAccepted = new OrderStopTargetAcceptedHandler(OrderStopTargetAccepted);
+            controller.OnOrderFilled = new OrderFilledHandler(OrderFilled);
+            controller.OnOrderCancelled = new OrderCanceledHandler(OrderCancelled);
 
             //Hold all the price data here on the trading program - push this price data to each strategy
             priceData = new Dictionary<string, Dictionary<int, Bar[]>>();
             barIndices = new Dictionary<string, Dictionary<int, int>>();
 
             //Load in the strategies
-            Strategy strategyMain = Strategy.Load("YenSquared", @"TestStrategy.dll");
+            Strategy strategyMain = Strategy.Load(strategyName, dllPath);
 
             //Load in the asset details and set this strategy asset, a new strategy object is created for each asset
-            assetDetails = Asset.LoadAssetFile("Assets.csv"); // NOTE normally this is got from the strategy but quick fix here for Linux compatible
+            assetDetails = Asset.LoadAssetFile(strategyMain.AssetDetailsFile); 
 
             //setup each strategy
-            foreach (string assetName in new string[] { "EURUSD", "EURJPY", "GBPJPY" })
+            foreach (string assetName in new string[] { "EURUSD", "EURJPY" })
             {
 
-                Strategy strategy = Strategy.Load("YenSquared", @"TestStrategy.dll");
+                Strategy strategy = Strategy.Load(strategyName, dllPath);
                 strategy.IsTesting = false;
+                strategy.TradingApi = controller;
+                strategy.TradingApiUser = (ITradingApiUser)firstUser;
+                strategy.Description = assetName; //Plus add on all setup parameters here eg. AUDUSD 3 2 6
+                strategy.OnMessage = new MessageDelegate(strategyMessage);
 
                 strategy.Assets.Add(assetName, assetDetails[assetName]);
                 strategy.Asset = assetDetails[assetName];
@@ -181,6 +198,8 @@ namespace NitradeTradeConsole
                     }
                 });
                 t.Start();
+                
+                DisplayMessage("Waiting for new complete bar before starting active trading.");
             }
 
 
@@ -221,7 +240,7 @@ namespace NitradeTradeConsole
         static void LostConnection()
         {
             //try and reopen the connection
-            Start();
+            Start(_strategyName, _dllPath);
         }
 
         static void TickReceived(UserConfig user, long symbolId, bool isBid, ulong value, DateTime tickTime)
@@ -248,6 +267,8 @@ namespace NitradeTradeConsole
             Dictionary<int, Bar[]> datasets = priceData[symbolName];
             Dictionary<int, int> indicies = barIndices[symbolName];
 
+            
+
             foreach (KeyValuePair<int, Bar[]> data in datasets)
             {
 
@@ -262,7 +283,6 @@ namespace NitradeTradeConsole
                     bar.OpenTime = barDate;
                     data.Value[0] = bar;
                 }
-
 
                 //if this is not a new bar just update bar at zero
                 if (tickTime < data.Value[0].OpenTime.AddMinutes(data.Key))
@@ -291,34 +311,7 @@ namespace NitradeTradeConsole
                     //we need to download the historic data to fill the lookback array
                     //Note it is best to do this on the start of a new bar because we can only download full bars from history
                     //Therefore by waiting until a new bar is formed we ensure that the new bar collects all ticks and historic bars are complete
-                    if (!assetDetails[symbolName].LookbackDownloaded.ContainsKey(data.Key) || !assetDetails[symbolName].LookbackDownloaded[data.Key])
-                    {
-                        //delay by 5 seconds so that enough time has elapsed for the bar to close
-                        int lookback = data.Value.Length;
-                        DataDownloader dd = new DataDownloader(user, symbolName, data.Key, DateTime.UtcNow.AddMinutes(-lookback * data.Key * 3), DateTime.UtcNow,
-                            new PriceDataDownloadedEventHandler(DownloadPriceDataCompleted));
-                        dd.OnError = new ErrorHandler(DisplayError);
-                        dd.PostRunStrategies = tfStrategies;
-                        Timer t = new Timer(DelayedDataDownload, dd, 5000, -1);
-
-                    }
-                    else
-                    {
-                        //load in the python calculated data if required - only need the most recent bar         
-                        if (PythonBridge != null)
-                            CalculatePythonData(PythonBridge, symbolName, data.Key, 1);
-
-                        foreach (Strategy strategy in tfStrategies)
-                        {
-                            strategy.Run(data.Key, symbolName);
-                        }
-                    }
-
-
-
-
-
-
+                    DowloadLookbackData(user, symbolName, data, tfStrategies);
                 }
             }
 
@@ -331,6 +324,85 @@ namespace NitradeTradeConsole
             }
 
 
+        }
+
+        private static Strategy OrderBelongsTo(string clientMsgId)
+        {
+            //need to find the strategy the message belongs to
+            foreach (Strategy strategy in liveStrategies)
+            {
+                if (strategy.HasPendingOrder(clientMsgId))
+                {
+                    return strategy;
+                }
+            }
+
+            return null;
+        }
+
+        private static void TradeFailed(long accountId, string message)
+        {
+            DisplayMessage("Failed trade command: " + message);
+        }
+
+        private static void OrderAccepted(string clientMsgId, long positionId, bool isClosing)
+        {
+            //need to find the strategy the message belongs to
+            Strategy strategy = OrderBelongsTo(clientMsgId);
+            if(strategy != null)
+                strategy.OrderAccepted(clientMsgId, positionId, isClosing);
+        }
+
+        private static void OrderStopTargetAccepted(string clientMsgId, long positionId)
+        {
+            //need to find the strategy the message belongs to
+            Strategy strategy = OrderBelongsTo(clientMsgId);
+            if (strategy != null)
+                strategy.OrderStopTargetAccepted(clientMsgId, positionId);
+        }
+
+        private static void OrderFilled(string clientMsgId, long positionId, double size, double commission, double actualPrice,
+        DateTime execTimestamp, DateTime createTimestamp, double marginRate, bool isClosing)
+        {
+            //need to find the strategy the message belongs to
+            Strategy strategy = OrderBelongsTo(clientMsgId);
+            if (strategy != null)
+                strategy.OrderFilled(clientMsgId, positionId, size, commission, actualPrice, execTimestamp, createTimestamp, marginRate, isClosing);
+        }
+
+        private static void OrderCancelled(string clientMsgId, long positionId)
+        {
+            //need to find the strategy the message belongs to
+            Strategy strategy = OrderBelongsTo(clientMsgId);
+            if (strategy != null)
+                strategy.OrderCancelled(clientMsgId, positionId);
+        }
+
+
+        private static void DowloadLookbackData(UserConfig user, string symbolName, KeyValuePair<int, Bar[]> data, Strategy[] strategiesToRunOnComplete)
+        {
+            if (!assetDetails[symbolName].LookbackDownloaded.ContainsKey(data.Key) || !assetDetails[symbolName].LookbackDownloaded[data.Key])
+            {
+                //delay by 5 seconds so that enough time has elapsed for the bar to close
+                int lookback = data.Value.Length;
+                DataDownloader dd = new DataDownloader(user, symbolName, data.Key, DateTime.UtcNow.AddMinutes(-lookback * data.Key * 3), DateTime.UtcNow,
+                    new PriceDataDownloadedEventHandler(DownloadPriceDataCompleted));
+                dd.OnError = new ErrorHandler(DisplayError);
+                dd.PostRunStrategies = strategiesToRunOnComplete;
+                Timer t = new Timer(DelayedDataDownload, dd, 5000, -1);
+
+            }
+            else
+            {
+                //load in the python calculated data if required - only need the most recent bar         
+                if (PythonBridge != null)
+                    CalculatePythonData(PythonBridge, symbolName, data.Key, 1);
+
+                foreach (Strategy strategy in strategiesToRunOnComplete)
+                {
+                    strategy.Run(data.Key, symbolName);
+                }
+            }
         }
 
         private static void DelayedDataDownload(Object o)
@@ -380,6 +452,8 @@ namespace NitradeTradeConsole
             if (PythonBridge != null)
                 CalculatePythonData(PythonBridge, e.AssetName, e.Timeframe, priceData[e.AssetName][e.Timeframe].Length);
 
+            DisplayMessage("Active trading ready for " + e.AssetName + " on " + e.Timeframe + "min bars");
+
             //Run the strategies after the look back price data has been downloade (if strategies attached)
             if (e.PostRunStrategies != null)
             {
@@ -404,7 +478,7 @@ namespace NitradeTradeConsole
 
             //Create the python bridge and run the calculation commands            
             string[] commands = new string[] { "whole", tempData, barCount.ToString(), pythonCalcCommands };
-            string[] results = pb.RunScript("build_features.py", commands);
+            string[] results = pb.RunScript(System.IO.Path.Combine("python_scripts","build_features.py"), commands);
 
             PreCalculatedFeatures pcFeatures = new PreCalculatedFeatures();
             try
@@ -435,6 +509,14 @@ namespace NitradeTradeConsole
             string msg = DateTime.Now.ToString() + ": " + symbol.Name + " spots requested.";
             WriteConsole(msg);
             _messageQueue.Enqueue(msg);
+        }
+
+        static void strategyMessage(string message, MessageType mType)
+        {
+            if (mType == MessageType.Error)
+                DisplayError(message);
+            else
+                DisplayMessage(message);
         }
 
         static void DisplayMessage(string message)
@@ -482,7 +564,7 @@ namespace NitradeTradeConsole
                 //write a batch of messages
                 try
                 {
-                    System.IO.File.AppendAllText(System.IO.Path.Combine("local", "activity.log"), content);
+                    System.IO.File.AppendAllText(System.IO.Path.Combine("output", "activity.log"), content);
                 }
                 catch (Exception ex)
                 {
@@ -502,7 +584,7 @@ namespace NitradeTradeConsole
                 //write a batch of messages
                 try
                 {
-                    System.IO.File.AppendAllText(System.IO.Path.Combine("local", "activity.log"), content + "\n");
+                    System.IO.File.AppendAllText(System.IO.Path.Combine("output", "errors.log"), content + "\n");
                 }
                 catch (Exception ex)
                 {
